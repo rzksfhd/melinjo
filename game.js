@@ -28,8 +28,26 @@ const melinjoImage = new Image();
 // Initialize the game
 window.onload = function() {
     canvas = document.getElementById('gameCanvas');
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
+    
+    // Make canvas responsive
+    function resizeCanvas() {
+        const container = document.querySelector('.game-container');
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+        const scale = Math.min(containerWidth / CANVAS_WIDTH, containerHeight / CANVAS_HEIGHT);
+        
+        canvas.style.width = `${CANVAS_WIDTH * scale}px`;
+        canvas.style.height = `${CANVAS_HEIGHT * scale}px`;
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+    }
+    
+    // Initial sizing
+    resizeCanvas();
+    
+    // Resize on window change
+    window.addEventListener('resize', resizeCanvas);
+    
     ctx = canvas.getContext('2d');
     
     // Initialize player
@@ -50,9 +68,61 @@ window.onload = function() {
     // Set up keyboard controls
     setupControls();
     
+    // Create touch jump button
+    createTouchJumpButton();
+    
     // Start the game loop
     requestAnimationFrame(gameLoop);
 };
+
+// Create a touch-friendly jump button
+function createTouchJumpButton() {
+    // Create jump button element
+    const jumpButton = document.createElement('div');
+    jumpButton.id = 'jumpButton';
+    jumpButton.innerHTML = 'JUMP';
+    jumpButton.style.position = 'absolute';
+    jumpButton.style.bottom = '20px';
+    jumpButton.style.right = '20px';
+    jumpButton.style.width = '80px';
+    jumpButton.style.height = '80px';
+    jumpButton.style.backgroundColor = 'rgba(76, 175, 80, 0.7)';
+    jumpButton.style.color = 'white';
+    jumpButton.style.borderRadius = '50%';
+    jumpButton.style.display = 'flex';
+    jumpButton.style.justifyContent = 'center';
+    jumpButton.style.alignItems = 'center';
+    jumpButton.style.fontWeight = 'bold';
+    jumpButton.style.fontSize = '16px';
+    jumpButton.style.cursor = 'pointer';
+    jumpButton.style.userSelect = 'none';
+    jumpButton.style.zIndex = '100';
+    
+    // Add to game container
+    document.querySelector('.game-container').appendChild(jumpButton);
+    
+    // Add touch event listeners
+    jumpButton.addEventListener('touchstart', function(event) {
+        event.preventDefault();
+        if (gameActive) {
+            handleJump();
+        }
+    }, { passive: false });
+    
+    // Add active state for better touch feedback
+    jumpButton.addEventListener('touchstart', function() {
+        jumpButton.style.backgroundColor = 'rgba(56, 142, 60, 0.9)';
+    });
+    
+    jumpButton.addEventListener('touchend', function() {
+        jumpButton.style.backgroundColor = 'rgba(76, 175, 80, 0.7)';
+    });
+    
+    // Hide button on desktop
+    if (window.matchMedia('(min-width: 768px)').matches && !('ontouchstart' in window)) {
+        jumpButton.style.display = 'none';
+    }
+}
 
 // Main game loop
 function gameLoop(timestamp) {
@@ -99,30 +169,45 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
 }
 
-// Set up keyboard controls
+// Set up keyboard and touch controls
 function setupControls() {
+    // Keyboard controls
     document.addEventListener('keydown', function(event) {
         // Space bar for jumping
         if (event.code === 'Space' && gameActive) {
-            if (!player.isJumping) {
-                // Initial jump
-                if (energy >= ENERGY_JUMP_COST) {
-                    player.velocityY = JUMP_FORCE;
-                    player.isJumping = true;
-                    player.jumpCount = 1;
-                    energy -= ENERGY_JUMP_COST;
-                }
-            } else {
-                // Additional jumps (flying) with diminishing height
-                if (energy >= ENERGY_JUMP_COST) {
-                    const flyingForce = JUMP_FORCE * FLYING_FORCE_MULTIPLIER / player.jumpCount;
-                    player.velocityY = flyingForce;
-                    player.jumpCount++;
-                    energy -= ENERGY_JUMP_COST;
-                }
-            }
+            handleJump();
         }
     });
+    
+    // Touch controls
+    canvas.addEventListener('touchstart', function(event) {
+        if (gameActive) {
+            // Prevent default to avoid scrolling
+            event.preventDefault();
+            handleJump();
+        }
+    }, { passive: false });
+}
+
+// Handle jump action (used by both keyboard and touch controls)
+function handleJump() {
+    if (!player.isJumping) {
+        // Initial jump
+        if (energy >= ENERGY_JUMP_COST) {
+            player.velocityY = JUMP_FORCE;
+            player.isJumping = true;
+            player.jumpCount = 1;
+            energy -= ENERGY_JUMP_COST;
+        }
+    } else {
+        // Additional jumps (flying) with diminishing height
+        if (energy >= ENERGY_JUMP_COST) {
+            const flyingForce = JUMP_FORCE * FLYING_FORCE_MULTIPLIER / player.jumpCount;
+            player.velocityY = flyingForce;
+            player.jumpCount++;
+            energy -= ENERGY_JUMP_COST;
+        }
+    }
 }
 
 // Update player position and state
@@ -359,6 +444,52 @@ function drawGameOver() {
         ctx.fillText('Game Over', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
     }
     
+    // Draw restart button (touch-friendly)
+    const buttonWidth = 200;
+    const buttonHeight = 60;
+    const buttonX = CANVAS_WIDTH / 2 - buttonWidth / 2;
+    const buttonY = CANVAS_HEIGHT / 2 + 50;
+    
+    // Button background
+    ctx.fillStyle = '#4CAF50';
+    ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+    
+    // Button text
+    ctx.fillStyle = 'white';
     ctx.font = '24px Arial';
-    ctx.fillText('Press F5 to restart', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
-}
+    ctx.fillText('Tap to Restart', CANVAS_WIDTH / 2, buttonY + buttonHeight/2 + 8);
+    
+    // Add touch event listener for the restart button
+    if (!window.restartListenerAdded) {
+        canvas.addEventListener('touchstart', function(event) {
+            if (!gameActive) {
+                const touch = event.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                
+                // Calculate touch position with proper scaling
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const touchX = (touch.clientX - rect.left) * scaleX;
+                const touchY = (touch.clientY - rect.top) * scaleY;
+                
+                // Check if touch is within restart button
+                if (touchX >= buttonX && touchX <= buttonX + buttonWidth &&
+                    touchY >= buttonY && touchY <= buttonY + buttonHeight) {
+                    // Restart the game
+                    location.reload();
+                }
+            }
+        });
+        
+        // Also add keyboard support for restart
+        document.addEventListener('keydown', function(event) {
+            if (!gameActive && event.code === 'Space') {
+                location.reload();
+            }
+        });
+        
+        window.restartListenerAdded = true;
+    }
+        
+        window.restartListenerAdded = true;
+    }
